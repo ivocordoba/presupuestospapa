@@ -57,7 +57,6 @@
 
   .acciones { display: grid; gap: 10px; margin-top: 16px; }
   .btn-pdf { background: var(--celeste-4); color: #fff; }
-  .btn-compartir { background: #25a35a; color: #fff; }
   .btn[disabled] { opacity: .6; }
 
   /* Barra fija abajo en el celular */
@@ -104,7 +103,6 @@
   .hoja th, .hoja td { border: 1px solid var(--celeste-2); }
   .hoja thead th { background: var(--celeste-1); text-align: left; padding: 10px 12px; font-size: 12px; letter-spacing: .8px; text-transform: uppercase; }
   .hoja tbody td { padding: 11px 12px; vertical-align: top; line-height: 1.5; background: #fff; white-space: pre-line; }
-  .hoja tbody tr:nth-child(even) td { background: var(--celeste-0); }
   .hoja tr { page-break-inside: avoid; }
   .c-item { width: 54px; text-align: center; }
   .c-total { width: 140px; text-align: right; white-space: nowrap !important; }
@@ -169,7 +167,6 @@
 
     <div class="acciones">
       <button class="btn btn-pdf" id="btnPdf" type="button">Descargar PDF</button>
-      <button class="btn btn-compartir" id="btnCompartir" type="button" hidden>Compartir</button>
     </div>
 
     <button class="btn btn-nuevo" id="btnNuevo" type="button">Empezar presupuesto nuevo</button>
@@ -449,15 +446,6 @@
     setTimeout(() => URL.revokeObjectURL(url), 10000);
     marcarEmitido();
     avisar("PDF descargado");
-  }));
-
-  // Compartir (WhatsApp, mail, etc.) solo si el celular lo soporta
-  const puedeCompartir = !!(navigator.canShare && navigator.canShare({ files: [new File([""], "x.pdf", { type: "application/pdf" })] }));
-  if (puedeCompartir) $("btnCompartir").hidden = false;
-  $("btnCompartir").addEventListener("click", () => conPdf($("btnCompartir"), async (blob, nombre) => {
-    const archivo = new File([blob], nombre, { type: "application/pdf" });
-    await navigator.share({ files: [archivo], title: "Presupuesto" });
-    marcarEmitido();
   }));
 
   $("btnNuevo").addEventListener("click", () => {
