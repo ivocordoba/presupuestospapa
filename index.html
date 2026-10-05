@@ -333,6 +333,8 @@
     actualizar();
     $("desc" + (estado.items.length - 1)).focus();
   });
+  // Cualquier cambio en el formulario cuenta como presupuesto sin descargar
+  document.querySelector(".panel").addEventListener("input", () => { estado.emitido = false; }, true);
   $("cliente").addEventListener("input", (e) => { estado.cliente = e.target.value; actualizar(); });
   $("direccion").addEventListener("input", (e) => { estado.direccion = e.target.value; actualizar(); });
 
@@ -413,11 +415,14 @@
     }
   }
 
-  // Marca el número del borrador como usado. Volver a descargar el mismo no avanza la numeración.
+  // Cada PDF descargado gasta su número: el borrador pasa al siguiente y conserva los datos.
   function marcarEmitido() {
-    localStorage.setItem(CLAVE_ULTIMO, String(Math.max(ultimoEmitido(), estado.numero)));
+    const usado = estado.numero;
+    localStorage.setItem(CLAVE_ULTIMO, String(Math.max(ultimoEmitido(), usado)));
+    estado.numero = ultimoEmitido() + 1;
     estado.emitido = true;
-    guardarBorrador();
+    actualizar();
+    return usado;
   }
 
   async function conPdf(boton, accion) {
@@ -444,13 +449,13 @@
     a.href = url; a.download = nombre;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
-    marcarEmitido();
-    avisar("PDF descargado");
+    const usado = marcarEmitido();
+    avisar(`PDF N° ${usado} descargado`);
   }));
 
   $("btnNuevo").addEventListener("click", () => {
     const hayDatos = estado.cliente || estado.direccion || estado.items.some((it) => it.desc || it.precio);
-    if (hayDatos && !estado.emitido && !confirm("Este presupuesto todavía no se descargó. ¿Borrarlo igual?")) return;
+    if (hayDatos && !estado.emitido && !confirm("Hay cambios sin descargar. ¿Borrarlos igual?")) return;
     estado = borradorVacio();
     $("cliente").value = "";
     $("direccion").value = "";
