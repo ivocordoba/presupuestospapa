@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#dcecf8">
+<title>Presupuestos · Héctor Darío Córdoba</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js" defer></script>
+<style>
+  :root {
+    --papel: #fcfbf7;
+    --celeste-0: #eef6fc;
+    --celeste-1: #dcecf8;
+    --celeste-2: #b9d9f0;
+    --celeste-3: #6aaed9;
+    --celeste-4: #3d8cc4;
+    --tinta: #1b1b1b;
+    --gris: #5a5f66;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #eceae4; font-family: "Nunito Sans", "Helvetica Neue", Arial, sans-serif; color: var(--tinta); -webkit-text-size-adjust: 100%; }
+
+  /* ---------- App (formulario) ---------- */
+  .app { max-width: 1180px; margin: 0 auto; padding: 16px 14px 120px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .app > * { min-width: 0; }
+  @media (min-width: 980px) { .app { grid-template-columns: 400px minmax(0, 1fr); align-items: start; padding-bottom: 40px; } .panel { position: sticky; top: 16px; } }
+
+  .panel { background: #fff; border-radius: 16px; padding: 18px 16px; box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+  .panel-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; gap: 10px; }
+  .panel-top h1 { font-size: 20px; font-weight: 800; }
+  .chip { background: var(--celeste-1); border-radius: 999px; padding: 6px 12px; font-size: 14px; font-weight: 800; white-space: nowrap; }
+
+  label { display: block; font-size: 14px; font-weight: 700; margin: 14px 0 6px; }
+  input, textarea {
+    width: 100%; font: inherit; font-size: 17px; /* >=16px evita el zoom en iPhone */
+    padding: 12px 14px; border: 1.5px solid var(--celeste-2); border-radius: 12px; background: var(--celeste-0); color: var(--tinta);
+  }
+  input:focus, textarea:focus { outline: none; border-color: var(--celeste-4); background: #fff; }
+  textarea { resize: vertical; min-height: 84px; line-height: 1.4; }
+
+  .item { border: 1.5px solid var(--celeste-1); border-radius: 14px; padding: 4px 12px 12px; margin-top: 12px; background: #fff; }
+  .item-top { display: flex; justify-content: space-between; align-items: center; }
+  .item-top span { font-weight: 800; font-size: 14px; color: var(--celeste-4); margin-top: 10px; }
+  .btn-x { border: none; background: none; color: #b0413e; font: inherit; font-size: 14px; font-weight: 700; padding: 10px 4px 0; cursor: pointer; }
+  .precio { position: relative; }
+  .precio::before { content: "$"; position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 17px; font-weight: 700; color: var(--gris); }
+  .precio input { padding-left: 30px; }
+
+  .btn { display: block; width: 100%; border: none; border-radius: 14px; padding: 15px; font: inherit; font-size: 17px; font-weight: 800; cursor: pointer; }
+  .btn-agregar { margin-top: 12px; background: var(--celeste-0); color: var(--celeste-4); border: 1.5px dashed var(--celeste-3); }
+  .total-form { display: flex; justify-content: space-between; align-items: baseline; margin-top: 16px; padding: 14px; border-radius: 12px; background: var(--celeste-1); font-weight: 800; }
+  .total-form strong { font-size: 22px; }
+  .btn-nuevo { margin-top: 12px; background: none; color: var(--gris); border: 1.5px solid #ddd; font-size: 15px; padding: 12px; }
+
+  .acciones { display: grid; gap: 10px; margin-top: 16px; }
+  .btn-pdf { background: var(--celeste-4); color: #fff; }
+  .btn-compartir { background: #25a35a; color: #fff; }
+  .btn[disabled] { opacity: .6; }
+
+  /* Barra fija abajo en el celular */
+  @media (max-width: 979px) {
+    .acciones { position: fixed; left: 0; right: 0; bottom: 0; margin: 0; padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); background: rgba(255,255,255,.96); box-shadow: 0 -2px 12px rgba(0,0,0,.08); z-index: 10; grid-auto-flow: column; grid-auto-columns: 1fr; }
+  }
+
+  .vista h2 { font-size: 15px; font-weight: 800; color: var(--gris); margin: 4px 2px 10px; }
+  .escala { width: 100%; overflow: hidden; border-radius: 6px; box-shadow: 0 4px 24px rgba(0,0,0,.12); }
+  .escala .hoja { transform-origin: top left; }
+
+  .aviso { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); background: var(--tinta); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 15px; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 20; max-width: 90vw; text-align: center; }
+  .aviso.ver { opacity: 1; }
+
+  /* Contenedor para generar el PDF a tamaño real */
+  #captura { position: fixed; top: 0; left: 0; z-index: -1; width: 794px; }
+
+  /* ---------- Hoja del presupuesto (A4 = 794px a 96dpi) ---------- */
+  .hoja {
+    width: 794px; min-height: 1120px; background: var(--papel);
+    padding: 60px 60px 52px; display: flex; flex-direction: column;
+  }
+  .encabezado { display: flex; justify-content: space-between; align-items: center; padding-bottom: 22px; border-bottom: 2px solid var(--celeste-2); }
+  .marca { display: flex; align-items: center; gap: 12px; }
+  .marca .logo { width: 58px; height: 58px; flex: none; }
+  .marca .nombre { font-size: 20px; font-weight: 800; letter-spacing: .3px; }
+  .marca .bajada { font-size: 12px; color: var(--gris); margin-top: 2px; }
+  .doc { text-align: right; }
+  .doc .titulo { font-size: 26px; font-weight: 800; letter-spacing: 3px; }
+  .doc .num { display: inline-block; margin-top: 6px; background: var(--celeste-1); border-radius: 6px; padding: 5px 10px; font-size: 12.5px; font-weight: 700; }
+
+  .meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 22px 0 18px; }
+  .meta div { background: var(--celeste-0); border: 1px solid var(--celeste-1); border-radius: 8px; padding: 8px 12px; }
+  .meta span { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: 1px; color: var(--gris); }
+  .meta strong { font-size: 14px; }
+
+  .hoja h3 { font-size: 12px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; margin: 18px 0 11px; display: flex; align-items: center; gap: 8px; }
+  .hoja h3::before { content: ""; width: 14px; height: 14px; border-radius: 4px; background: var(--celeste-2); }
+
+  .datos p { font-size: 13.5px; line-height: 1.8; }
+  .datos b { font-weight: 700; }
+
+  .hoja table { width: 100%; border-collapse: collapse; font-size: 13.5px; border: 1.5px solid var(--celeste-3); }
+  .hoja th, .hoja td { border: 1px solid var(--celeste-2); }
+  .hoja thead th { background: var(--celeste-1); text-align: left; padding: 10px 12px; font-size: 12px; letter-spacing: .8px; text-transform: uppercase; }
+  .hoja tbody td { padding: 11px 12px; vertical-align: top; line-height: 1.5; background: #fff; white-space: pre-line; }
+  .hoja tbody tr:nth-child(even) td { background: var(--celeste-0); }
+  .hoja tr { page-break-inside: avoid; }
+  .c-item { width: 54px; text-align: center; }
+  .c-total { width: 140px; text-align: right; white-space: nowrap !important; }
+  .hoja thead th.c-item { text-align: center; }
+  .hoja thead th.c-total { text-align: right; }
+  .hoja tfoot td { background: var(--celeste-1); padding: 12px; border-top: 2px solid var(--celeste-3); }
+  .hoja tfoot .lbl { text-align: right; font-size: 12.5px; font-weight: 800; letter-spacing: 1.5px; }
+  .hoja tfoot .c-total { font-size: 18px; font-weight: 800; }
+  .vacio { color: #a3a8ae; font-style: italic; }
+
+  .hoja ul { list-style: none; font-size: 13.5px; line-height: 1.9; }
+  .hoja ul li::before { content: "•"; color: var(--celeste-3); font-weight: 800; margin-right: 8px; }
+
+  .firma { margin-top: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 76px; padding-top: 53px; font-size: 12px; color: var(--gris); text-align: center; }
+  .firma div { border-top: 1px solid var(--tinta); padding-top: 6px; }
+
+  .pie { margin-top: 30px; background: var(--celeste-1); border-radius: 10px; padding: 10px 14px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; }
+  .pie b { font-weight: 800; }
+  /* ---------- Login ---------- */
+  .login { position: fixed; inset: 0; z-index: 50; background: var(--papel); display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .login form { width: 100%; max-width: 360px; text-align: center; }
+  .login .logo { width: 76px; height: 76px; }
+  .login h1 { font-size: 22px; font-weight: 800; margin-top: 10px; }
+  .login p { font-size: 15px; color: var(--gris); margin: 4px 0 22px; }
+  .login input { text-align: center; }
+  .login .btn { margin-top: 12px; background: var(--celeste-4); color: #fff; }
+  .login .error { color: #b0413e; font-weight: 700; font-size: 15px; min-height: 22px; margin-top: 12px; }
+  body.bloqueado .app, body.bloqueado .acciones { visibility: hidden; }
+</style>
+</head>
+<body class="bloqueado">
+
+<div class="login" id="login">
+  <form id="formLogin" autocomplete="on">
+    <img class="logo" alt="" src="data:image/svg+xml,%3Csvg viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23dcecf8' stroke='%236aaed9' stroke-width='2'/%3E%3Crect x='15' y='17' width='28' height='11' rx='3' fill='%23ffffff' stroke='%231b1b1b' stroke-width='2'/%3E%3Cpath d='M43 22.5h4v9H32v6' fill='none' stroke='%231b1b1b' stroke-width='2' stroke-linejoin='round'/%3E%3Crect x='29' y='37' width='6' height='13' rx='2' fill='%231b1b1b'/%3E%3Cpath d='M17 28v4' stroke='%236aaed9' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+    <h1>Héctor Darío Córdoba</h1>
+    <p>Presupuestos</p>
+    <input id="clave" type="password" autocomplete="current-password" placeholder="Clave" required>
+    <button class="btn" type="submit">Entrar</button>
+    <div class="error" id="errorLogin"></div>
+  </form>
+</div>
+
+<main class="app">
+  <section class="panel">
+    <div class="panel-top">
+      <h1>Nuevo presupuesto</h1>
+      <span class="chip" id="chipNum">N° 1</span>
+    </div>
+
+    <label for="cliente">Cliente / Consorcio</label>
+    <input id="cliente" type="text" autocomplete="off" autocapitalize="sentences" placeholder="Ej: Consorcio de propietarios">
+
+    <label for="direccion">Ubicación del trabajo</label>
+    <input id="direccion" type="text" autocomplete="off" autocapitalize="sentences" placeholder="Ej: Planes 758, 2do &quot;A&quot;, CABA">
+
+    <label style="margin-top:20px">Trabajos</label>
+    <div id="items"></div>
+    <button class="btn btn-agregar" id="agregar" type="button">+ Agregar otro trabajo</button>
+
+    <div class="total-form"><span>TOTAL</span><strong id="totalForm">$ 0</strong></div>
+
+    <div class="acciones">
+      <button class="btn btn-pdf" id="btnPdf" type="button">Descargar PDF</button>
+      <button class="btn btn-compartir" id="btnCompartir" type="button" hidden>Compartir</button>
+    </div>
+
+    <button class="btn btn-nuevo" id="btnNuevo" type="button">Empezar presupuesto nuevo</button>
+  </section>
+
+  <section class="vista">
+    <h2>Así va a quedar</h2>
+    <div class="escala" id="escala">
+      <article class="hoja" id="hoja">
+        <header class="encabezado">
+          <div class="marca">
+            <img class="logo" alt="" src="data:image/svg+xml,%3Csvg viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23dcecf8' stroke='%236aaed9' stroke-width='2'/%3E%3Crect x='15' y='17' width='28' height='11' rx='3' fill='%23ffffff' stroke='%231b1b1b' stroke-width='2'/%3E%3Cpath d='M43 22.5h4v9H32v6' fill='none' stroke='%231b1b1b' stroke-width='2' stroke-linejoin='round'/%3E%3Crect x='29' y='37' width='6' height='13' rx='2' fill='%231b1b1b'/%3E%3Cpath d='M17 28v4' stroke='%236aaed9' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+            <div>
+              <div class="nombre">Héctor Darío Córdoba</div>
+              <div class="bajada">Pintura de obra · Interiores y exteriores</div>
+            </div>
+          </div>
+          <div class="doc">
+            <div class="titulo">PRESUPUESTO</div>
+            <div class="num" id="hNum"></div>
+          </div>
+        </header>
+
+        <section class="meta">
+          <div><span>Fecha</span><strong id="hFecha"></strong></div>
+          <div><span>Validez</span><strong>15 días</strong></div>
+          <div><span>Forma de pago</span><strong>50% / 50%</strong></div>
+        </section>
+
+        <h3>Datos del cliente y obra</h3>
+        <div class="datos">
+          <p><b>Cliente / Consorcio:</b> <span id="hCliente"></span></p>
+          <p><b>Ubicación del trabajo:</b> <span id="hDireccion"></span></p>
+        </div>
+
+        <h3>Detalle de trabajos y materiales</h3>
+        <table>
+          <thead><tr><th class="c-item">Ítem</th><th>Descripción de las tareas</th><th class="c-total">Total</th></tr></thead>
+          <tbody id="hItems"></tbody>
+          <tfoot><tr><td colspan="2" class="lbl">TOTAL GENERAL</td><td class="c-total" id="hTotal"></td></tr></tfoot>
+        </table>
+
+        <h3>Condiciones de comercialización y pago</h3>
+        <ul>
+          <li><b>Forma de pago:</b> 50% de anticipo al aceptar el presupuesto y 50% al finalizar los trabajos.</li>
+          <li><b>Validez del presupuesto:</b> 15 días a partir de la fecha de emisión.</li>
+        </ul>
+
+        <div class="firma">
+          <div>Firma del prestador</div>
+          <div>Conformidad del cliente</div>
+        </div>
+
+        <footer class="pie">
+          <span><b>CUIT</b> 20-21131969-1</span>
+          <span><b>Tel.</b> 11-5720-0872</span>
+          <span><b>Mail</b> elpeladocordoba1917@gmail.com</span>
+          <span><b>Dir.</b> Pedro de Mendoza 425, Ciudad Madero, La Matanza</span>
+        </footer>
+      </article>
+    </div>
+  </section>
+</main>
+
+<div id="captura" aria-hidden="true"></div>
+<div class="aviso" id="aviso"></div>
+
+<script>
+  // ---------- Acceso ----------
+  // No es seguridad real (el código es público): solo evita que cualquiera use la página.
+  // En el código se guarda el SHA-256 de la clave, no la clave. Para cambiarla: ./set-clave.sh
+  const HASH_CLAVE = "823192bcfedd19217728bd38648e47ac858427fa84e1f68350a85fa7aaf7e678";
+  const CLAVE_ACCESO = "presupuesto.acceso";
+
+  async function sha256(txt) {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(txt));
+    return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  function desbloquear() {
+    document.getElementById("login").remove();
+    document.body.classList.remove("bloqueado");
+  }
+  if (localStorage.getItem(CLAVE_ACCESO) === HASH_CLAVE) desbloquear();
+  else document.getElementById("formLogin").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const h = await sha256("papapresupuestos:" + document.getElementById("clave").value);
+    if (h === HASH_CLAVE) { localStorage.setItem(CLAVE_ACCESO, h); desbloquear(); }
+    else { document.getElementById("errorLogin").textContent = "Clave incorrecta"; document.getElementById("clave").select(); }
+  });
+</script>
+
+<script>
+  // localStorage: "presupuesto.ultimo" = último número ya emitido (descargado/compartido).
+  // Cada borrador nuevo toma ultimo + 1 y lo conserva hasta que se empieza otro.
+  const CLAVE_ULTIMO = "presupuesto.ultimo";
+  const CLAVE_BORRADOR = "presupuesto.borrador";
+
+  const $ = (id) => document.getElementById(id);
+  const fmtPesos = (n) => "$ " + n.toLocaleString("es-AR");
+  const soloDigitos = (s) => (s || "").replace(/\D/g, "");
+  const escapar = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  function ultimoEmitido() { return parseInt(localStorage.getItem(CLAVE_ULTIMO) || "0", 10) || 0; }
+  function numeroLargo(n) { return "0001-" + String(n).padStart(8, "0"); }
+  function hoy() { return new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" }); }
+
+  // ---------- Estado ----------
+  let estado = cargarBorrador();
+
+  function borradorVacio() {
+    return { numero: ultimoEmitido() + 1, emitido: false, cliente: "", direccion: "", items: [{ desc: "", precio: "" }] };
+  }
+  function cargarBorrador() {
+    try {
+      const b = JSON.parse(localStorage.getItem(CLAVE_BORRADOR));
+      if (b && b.numero && Array.isArray(b.items) && b.items.length) return b;
+    } catch (e) {}
+    return borradorVacio();
+  }
+  function guardarBorrador() { localStorage.setItem(CLAVE_BORRADOR, JSON.stringify(estado)); }
+
+  // ---------- Formulario ----------
+  function dibujarItems() {
+    const cont = $("items");
+    cont.innerHTML = "";
+    estado.items.forEach((it, i) => {
+      const div = document.createElement("div");
+      div.className = "item";
+      div.innerHTML = `
+        <div class="item-top">
+          <span>Trabajo ${i + 1}</span>
+          ${estado.items.length > 1 ? `<button class="btn-x" type="button" data-borrar="${i}">Quitar</button>` : ""}
+        </div>
+        <label for="desc${i}">Descripción</label>
+        <textarea id="desc${i}" data-campo="desc" data-i="${i}" autocapitalize="sentences" placeholder="Ej: Pintura de techo del balcón, mano de obra y materiales."></textarea>
+        <label for="precio${i}">Precio</label>
+        <div class="precio"><input id="precio${i}" data-campo="precio" data-i="${i}" type="text" inputmode="numeric" placeholder="0"></div>`;
+      cont.appendChild(div);
+      div.querySelector("textarea").value = it.desc;
+      div.querySelector("input").value = it.precio ? Number(it.precio).toLocaleString("es-AR") : "";
+    });
+  }
+
+  $("items").addEventListener("input", (e) => {
+    const el = e.target, i = +el.dataset.i;
+    if (el.dataset.campo === "desc") estado.items[i].desc = el.value;
+    if (el.dataset.campo === "precio") {
+      const d = soloDigitos(el.value).replace(/^0+/, "");
+      estado.items[i].precio = d;
+      el.value = d ? Number(d).toLocaleString("es-AR") : "";
+    }
+    actualizar();
+  });
+  $("items").addEventListener("click", (e) => {
+    const i = e.target.dataset.borrar;
+    if (i === undefined) return;
+    estado.items.splice(+i, 1);
+    dibujarItems();
+    actualizar();
+  });
+  $("agregar").addEventListener("click", () => {
+    estado.items.push({ desc: "", precio: "" });
+    dibujarItems();
+    actualizar();
+    $("desc" + (estado.items.length - 1)).focus();
+  });
+  $("cliente").addEventListener("input", (e) => { estado.cliente = e.target.value; actualizar(); });
+  $("direccion").addEventListener("input", (e) => { estado.direccion = e.target.value; actualizar(); });
+
+  // ---------- Vista previa ----------
+  function total() { return estado.items.reduce((s, it) => s + (Number(it.precio) || 0), 0); }
+
+  function actualizar() {
+    const n = estado.numero;
+    $("chipNum").textContent = "N° " + n;
+    $("hNum").textContent = "N° " + numeroLargo(n);
+    $("hFecha").textContent = hoy();
+    $("hCliente").innerHTML = estado.cliente.trim() ? escapar(estado.cliente) : '<span class="vacio">—</span>';
+    $("hDireccion").innerHTML = estado.direccion.trim() ? escapar(estado.direccion) : '<span class="vacio">—</span>';
+    $("hItems").innerHTML = estado.items.map((it, i) => `
+      <tr>
+        <td class="c-item">${String(i + 1).padStart(2, "0")}</td>
+        <td>${it.desc.trim() ? escapar(it.desc.trim()) : '<span class="vacio">Descripción del trabajo</span>'}</td>
+        <td class="c-total">${it.precio ? fmtPesos(Number(it.precio)) : '<span class="vacio">$ —</span>'}</td>
+      </tr>`).join("");
+    $("hTotal").textContent = fmtPesos(total());
+    $("totalForm").textContent = fmtPesos(total());
+    guardarBorrador();
+    escalar();
+  }
+
+  // Achica la hoja A4 para que entre en el ancho de la pantalla
+  function escalar() {
+    const caja = $("escala"), hoja = $("hoja");
+    const s = Math.min(1, caja.clientWidth / 794);
+    hoja.style.transform = `scale(${s})`;
+    caja.style.height = hoja.offsetHeight * s + "px";
+  }
+  window.addEventListener("resize", escalar);
+
+  // ---------- PDF ----------
+  function avisar(txt) {
+    const a = $("aviso");
+    a.textContent = txt;
+    a.classList.add("ver");
+    clearTimeout(avisar.t);
+    avisar.t = setTimeout(() => a.classList.remove("ver"), 2600);
+  }
+
+  function validar() {
+    if (!estado.cliente.trim()) { avisar("Falta el cliente"); $("cliente").focus(); return false; }
+    if (!estado.direccion.trim()) { avisar("Falta la ubicación del trabajo"); $("direccion").focus(); return false; }
+    const i = estado.items.findIndex((it) => !it.desc.trim() || !it.precio);
+    if (i >= 0) { avisar(`Completá el trabajo ${i + 1}`); $(estado.items[i].desc.trim() ? "precio" + i : "desc" + i).focus(); return false; }
+    return true;
+  }
+
+  function slug(txt, max) {
+    return txt.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_|_$/g, "").toLowerCase().slice(0, max);
+  }
+  // presupuesto_<numero>_<cliente>_<ubicacion>.pdf
+  function nombreArchivo() {
+    return `presupuesto_${estado.numero}_${slug(estado.cliente, 40) || "cliente"}_${slug(estado.direccion, 40) || "ubicacion"}.pdf`;
+  }
+
+  async function generarPdf() {
+    await document.fonts.ready;
+    const captura = $("captura");
+    const copia = $("hoja").cloneNode(true);
+    copia.removeAttribute("id");
+    copia.style.transform = "none";
+    captura.innerHTML = "";
+    captura.appendChild(copia);
+    try {
+      return await html2pdf().set({
+        margin: 0,
+        image: { type: "jpeg", quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: "#fcfbf7", scrollX: 0, scrollY: 0, windowWidth: 794 },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        pagebreak: { mode: ["css"], avoid: "tr" },
+      }).from(copia).outputPdf("blob");
+    } finally {
+      captura.innerHTML = "";
+    }
+  }
+
+  // Marca el número del borrador como usado. Volver a descargar el mismo no avanza la numeración.
+  function marcarEmitido() {
+    localStorage.setItem(CLAVE_ULTIMO, String(Math.max(ultimoEmitido(), estado.numero)));
+    estado.emitido = true;
+    guardarBorrador();
+  }
+
+  async function conPdf(boton, accion) {
+    if (!validar()) return;
+    if (!window.html2pdf) { avisar("Sin conexión: no se pudo cargar el generador de PDF"); return; }
+    const texto = boton.textContent;
+    boton.disabled = true;
+    boton.textContent = "Generando…";
+    try {
+      actualizar(); // refresca la fecha por si la página quedó abierta desde otro día
+      const blob = await generarPdf();
+      await accion(blob, nombreArchivo());
+    } catch (e) {
+      if (e && e.name !== "AbortError") { console.error(e); avisar("No se pudo generar el PDF"); }
+    } finally {
+      boton.disabled = false;
+      boton.textContent = texto;
+    }
+  }
+
+  $("btnPdf").addEventListener("click", () => conPdf($("btnPdf"), async (blob, nombre) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = nombre;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    marcarEmitido();
+    avisar("PDF descargado");
+  }));
+
+  // Compartir (WhatsApp, mail, etc.) solo si el celular lo soporta
+  const puedeCompartir = !!(navigator.canShare && navigator.canShare({ files: [new File([""], "x.pdf", { type: "application/pdf" })] }));
+  if (puedeCompartir) $("btnCompartir").hidden = false;
+  $("btnCompartir").addEventListener("click", () => conPdf($("btnCompartir"), async (blob, nombre) => {
+    const archivo = new File([blob], nombre, { type: "application/pdf" });
+    await navigator.share({ files: [archivo], title: "Presupuesto" });
+    marcarEmitido();
+  }));
+
+  $("btnNuevo").addEventListener("click", () => {
+    const hayDatos = estado.cliente || estado.direccion || estado.items.some((it) => it.desc || it.precio);
+    if (hayDatos && !estado.emitido && !confirm("Este presupuesto todavía no se descargó. ¿Borrarlo igual?")) return;
+    estado = borradorVacio();
+    $("cliente").value = "";
+    $("direccion").value = "";
+    dibujarItems();
+    actualizar();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+
+  // ---------- Inicio ----------
+  $("cliente").value = estado.cliente;
+  $("direccion").value = estado.direccion;
+  dibujarItems();
+  actualizar();
+  document.fonts.ready.then(escalar);
+  // Al volver a la pestaña (p. ej. al día siguiente) se refresca la fecha
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) actualizar(); });
+</script>
+</body>
+</html>
