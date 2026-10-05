@@ -277,7 +277,7 @@
   let estado = cargarBorrador();
 
   function borradorVacio() {
-    return { numero: ultimoEmitido() + 1, emitido: false, cliente: "", direccion: "", items: [{ desc: "", precio: "" }] };
+    return { numero: ultimoEmitido() + 1, cliente: "", direccion: "", items: [{ desc: "", precio: "" }] };
   }
   function cargarBorrador() {
     try {
@@ -333,8 +333,6 @@
     actualizar();
     $("desc" + (estado.items.length - 1)).focus();
   });
-  // Cualquier cambio en el formulario cuenta como presupuesto sin descargar
-  document.querySelector(".panel").addEventListener("input", () => { estado.emitido = false; }, true);
   $("cliente").addEventListener("input", (e) => { estado.cliente = e.target.value; actualizar(); });
   $("direccion").addEventListener("input", (e) => { estado.direccion = e.target.value; actualizar(); });
 
@@ -415,14 +413,21 @@
     }
   }
 
-  // Cada PDF descargado gasta su número: el borrador pasa al siguiente y conserva los datos.
+  // Cada PDF descargado gasta su número y el formulario queda vacío para el siguiente.
   function marcarEmitido() {
     const usado = estado.numero;
     localStorage.setItem(CLAVE_ULTIMO, String(Math.max(ultimoEmitido(), usado)));
-    estado.numero = ultimoEmitido() + 1;
-    estado.emitido = true;
-    actualizar();
+    limpiarFormulario();
     return usado;
+  }
+
+  function limpiarFormulario() {
+    estado = borradorVacio();
+    $("cliente").value = "";
+    $("direccion").value = "";
+    dibujarItems();
+    actualizar();
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function conPdf(boton, accion) {
@@ -455,13 +460,8 @@
 
   $("btnNuevo").addEventListener("click", () => {
     const hayDatos = estado.cliente || estado.direccion || estado.items.some((it) => it.desc || it.precio);
-    if (hayDatos && !estado.emitido && !confirm("Hay cambios sin descargar. ¿Borrarlos igual?")) return;
-    estado = borradorVacio();
-    $("cliente").value = "";
-    $("direccion").value = "";
-    dibujarItems();
-    actualizar();
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (hayDatos && !confirm("Hay datos sin descargar. ¿Borrarlos igual?")) return;
+    limpiarFormulario();
   });
 
   // ---------- Inicio ----------
