@@ -1,3 +1,4 @@
 # No publicar: datos reales de clientes y pruebas de diseño
 *.pdf
 mockups/
+__pycache__/

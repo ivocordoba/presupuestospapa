@@ -236,32 +236,52 @@
 
 <script>
   // ---------- Acceso ----------
-  // No es seguridad real (el código es público): solo evita que cualquiera use la página.
-  // En el código se guarda el SHA-256 de la clave, no la clave. Para cambiarla: ./set-clave.sh
-  const HASH_CLAVE = "823192bcfedd19217728bd38648e47ac858427fa84e1f68350a85fa7aaf7e678";
-  const CLAVE_ACCESO = "presupuesto.acceso";
+  // La URL y el token de Upstash Redis están cifrados con la clave (PBKDF2 + AES-GCM).
+  // Sin la clave no se pueden leer, aunque el código sea público. Para cambiarlos: python3 configurar.py
+  const ACCESO = {"salt": "Bc0S3RyMWkpJLAe8yL4txQ==", "iv": "LVMZf4Q70xKhCGVd", "iter": 250000, "datos": "Fn7rOwm5xWATe4RD/zQHJn8joiKB5xaUxlTu8uCe3dTToULJN8N2+y5wp/WlOVpsn00xJRm8hiLXl2nlrCalwGUF/mKBRKE+yxYwh1hhwnDG9XdJnEj/Lg5TYINd5oGVlalba8SEd0MrEfcn+WfIXNRhsonQlV0aCexPkFBdGMPnVOTh3KWVJUns"};
+  const CLAVE_REDIS = "presupuesto.redis";
+  let REDIS = null; // { url, token } una vez que se entra
 
-  async function sha256(txt) {
-    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(txt));
-    return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const b64 = (t) => Uint8Array.from(atob(t), (c) => c.charCodeAt(0));
+  async function descifrar(clave) {
+    const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(clave), "PBKDF2", false, ["deriveKey"]);
+    const llave = await crypto.subtle.deriveKey(
+      { name: "PBKDF2", salt: b64(ACCESO.salt), iterations: ACCESO.iter, hash: "SHA-256" },
+      base, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+    const plano = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64(ACCESO.iv) }, llave, b64(ACCESO.datos));
+    return JSON.parse(new TextDecoder().decode(plano));
   }
-  function desbloquear() {
+  function desbloquear(cred) {
+    REDIS = cred;
     document.getElementById("login").remove();
     document.body.classList.remove("bloqueado");
+    window.dispatchEvent(new Event("desbloqueado"));
   }
-  if (localStorage.getItem(CLAVE_ACCESO) === HASH_CLAVE) desbloquear();
-  else document.getElementById("formLogin").addEventListener("submit", async (e) => {
+
+  // Si la clave cambió (otro ACCESO), lo guardado en el celular deja de valer y se vuelve a pedir.
+  try {
+    const g = JSON.parse(localStorage.getItem(CLAVE_REDIS));
+    if (ACCESO && g && g.datos === ACCESO.datos) desbloquear(g.cred);
+  } catch (e) {}
+  if (!REDIS) document.getElementById("formLogin").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const h = await sha256("papapresupuestos:" + document.getElementById("clave").value);
-    if (h === HASH_CLAVE) { localStorage.setItem(CLAVE_ACCESO, h); desbloquear(); }
-    else { document.getElementById("errorLogin").textContent = "Clave incorrecta"; document.getElementById("clave").select(); }
+    const err = document.getElementById("errorLogin");
+    try {
+      if (!ACCESO) throw new Error("sin configurar");
+      const cred = await descifrar(document.getElementById("clave").value);
+      localStorage.setItem(CLAVE_REDIS, JSON.stringify({ datos: ACCESO.datos, cred }));
+      desbloquear(cred);
+    } catch (e) {
+      err.textContent = ACCESO ? "Clave incorrecta" : "Falta configurar el acceso";
+      document.getElementById("clave").select();
+    }
   });
 </script>
 
 <script>
-  // localStorage: "presupuesto.ultimo" = último número ya emitido (descargado/compartido).
-  // Cada borrador nuevo toma ultimo + 1 y lo conserva hasta que se empieza otro.
-  const CLAVE_ULTIMO = "presupuesto.ultimo";
+  // El número de presupuesto es un contador compartido en Upstash Redis ("presupuestos:numero"),
+  // así todos los celulares siguen la misma numeración. Se incrementa (INCR, atómico) al descargar.
+  const CLAVE_CONTADOR = "presupuestos:numero";
   const CLAVE_BORRADOR = "presupuesto.borrador";
 
   const $ = (id) => document.getElementById(id);
@@ -269,7 +289,23 @@
   const soloDigitos = (s) => (s || "").replace(/\D/g, "");
   const escapar = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-  function ultimoEmitido() { return parseInt(localStorage.getItem(CLAVE_ULTIMO) || "0", 10) || 0; }
+  async function redis(...partes) {
+    const r = await fetch(REDIS.url.replace(/\/$/, "") + "/" + partes.map(encodeURIComponent).join("/"), {
+      method: "POST", headers: { Authorization: "Bearer " + REDIS.token },
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.error) throw new Error(j.error || "HTTP " + r.status);
+    return j.result;
+  }
+
+  // Próximo número según el contador (solo para mostrar; el definitivo se toma al descargar)
+  let proximo = null;
+  async function refrescarNumero() {
+    if (!REDIS) return;
+    try { proximo = (parseInt(await redis("get", CLAVE_CONTADOR), 10) || 0) + 1; }
+    catch (e) { console.error(e); proximo = null; }
+    actualizar();
+  }
   function numeroLargo(n) { return "0001-" + String(n).padStart(8, "0"); }
   function hoy() { return new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" }); }
 
@@ -277,12 +313,12 @@
   let estado = cargarBorrador();
 
   function borradorVacio() {
-    return { numero: ultimoEmitido() + 1, cliente: "", direccion: "", items: [{ desc: "", precio: "" }] };
+    return { cliente: "", direccion: "", items: [{ desc: "", precio: "" }] };
   }
   function cargarBorrador() {
     try {
       const b = JSON.parse(localStorage.getItem(CLAVE_BORRADOR));
-      if (b && b.numero && Array.isArray(b.items) && b.items.length) return b;
+      if (b && Array.isArray(b.items) && b.items.length) { delete b.numero; return b; }
     } catch (e) {}
     return borradorVacio();
   }
@@ -340,9 +376,9 @@
   function total() { return estado.items.reduce((s, it) => s + (Number(it.precio) || 0), 0); }
 
   function actualizar() {
-    const n = estado.numero;
-    $("chipNum").textContent = "N° " + n;
-    $("hNum").textContent = "N° " + numeroLargo(n);
+    const n = estado.numero || proximo; // estado.numero solo existe mientras se genera el PDF
+    $("chipNum").textContent = n ? "N° " + n : "N° …";
+    $("hNum").textContent = n ? "N° " + numeroLargo(n) : "N° —";
     $("hFecha").textContent = hoy();
     $("hCliente").innerHTML = estado.cliente.trim() ? escapar(estado.cliente) : '<span class="vacio">—</span>';
     $("hDireccion").innerHTML = estado.direccion.trim() ? escapar(estado.direccion) : '<span class="vacio">—</span>';
@@ -413,14 +449,6 @@
     }
   }
 
-  // Cada PDF descargado gasta su número y el formulario queda vacío para el siguiente.
-  function marcarEmitido() {
-    const usado = estado.numero;
-    localStorage.setItem(CLAVE_ULTIMO, String(Math.max(ultimoEmitido(), usado)));
-    limpiarFormulario();
-    return usado;
-  }
-
   function limpiarFormulario() {
     estado = borradorVacio();
     $("cliente").value = "";
@@ -430,33 +458,38 @@
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  async function conPdf(boton, accion) {
+  // Descargar: toma el número del contador compartido, arma el PDF, lo baja y vacía el formulario.
+  $("btnPdf").addEventListener("click", async () => {
     if (!validar()) return;
     if (!window.html2pdf) { avisar("Sin conexión: no se pudo cargar el generador de PDF"); return; }
-    const texto = boton.textContent;
+    const boton = $("btnPdf"), texto = boton.textContent;
     boton.disabled = true;
     boton.textContent = "Generando…";
     try {
-      actualizar(); // refresca la fecha por si la página quedó abierta desde otro día
+      try { estado.numero = await redis("incr", CLAVE_CONTADOR); }
+      catch (e) { console.error(e); avisar("No se pudo obtener el número. Revisá la conexión y probá de nuevo."); return; }
+      actualizar(); // pone el número definitivo y refresca la fecha
       const blob = await generarPdf();
-      await accion(blob, nombreArchivo());
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = nombreArchivo();
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      const usado = estado.numero;
+      proximo = usado + 1;
+      limpiarFormulario();
+      avisar(`PDF N° ${usado} descargado`);
+      refrescarNumero();
     } catch (e) {
-      if (e && e.name !== "AbortError") { console.error(e); avisar("No se pudo generar el PDF"); }
+      console.error(e);
+      delete estado.numero;
+      actualizar();
+      avisar("No se pudo generar el PDF");
     } finally {
       boton.disabled = false;
       boton.textContent = texto;
     }
-  }
-
-  $("btnPdf").addEventListener("click", () => conPdf($("btnPdf"), async (blob, nombre) => {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = nombre;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
-    const usado = marcarEmitido();
-    avisar(`PDF N° ${usado} descargado`);
-  }));
+  });
 
   $("btnNuevo").addEventListener("click", () => {
     const hayDatos = estado.cliente || estado.direccion || estado.items.some((it) => it.desc || it.precio);
@@ -471,7 +504,9 @@
   actualizar();
   document.fonts.ready.then(escalar);
   // Al volver a la pestaña (p. ej. al día siguiente) se refresca la fecha
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) actualizar(); });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refrescarNumero(); });
+  window.addEventListener("desbloqueado", refrescarNumero);
+  refrescarNumero();
 </script>
 </body>
 </html>
